@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+
+Parameters:
+  GithubRepository:
+    Type: String
+    Description: GitHub repository URL
+  Stage:
+    Type: String
+    Description: Deployment stage
+  GithubToken:
+    Type: String
+    Description: GitHub token
+
+Globals:
+  Function:
+    Environment:
+      Variables:
+        TABLE_NAME: sam-table
+
+Resources:
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: amplify-sam-app
+      Repository: !Ref GithubRepository
+      IAMServiceRole: !GetAtt AmplifyRole.Arn
+      OauthToken: !Ref GithubToken  # Thêm dòng này để cung cấp token
+      EnvironmentVariables:
+        - Name: ENDPOINT
+          Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
+
+  AmplifyBranch:
+    Type: AWS::Amplify::Branch
+    Properties:
+      BranchName: main
+      AppId: !GetAtt AmplifyApp.AppId
+      EnableAutoBuild: true
+
+  AmplifyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - amplify.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: Amplify
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: "amplify:*"
+                Resource: "*"
+
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Stage
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+
+
+  MyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: handler.handler
+      Runtime: nodejs16.x
+      Policies: AmazonDynamoDBFullAccess
+      Events:
+        PostApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /car
+            Method: POST
+        PutApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /car
+            Method: PUT
+        DeleteApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /car
+            Method: DELETE
+        HealthCheckApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /check
+            Method: GET
+        InventoryApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: /inventory
+            Method: GET
+
+
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      TableName: sam-table
+      AttributeDefinitions: 
+        - AttributeName: id
+          AttributeType: S
+      KeySchema: 
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      ProvisionedThroughput: 
+        ReadCapacityUnits: 0
+        WriteCapacityUnits: 0
+
+
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  OrderApi:
+    Description: "API Gateway endpoint URL for Prod stage for Order function"
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/inventory/"
