@@ -45,8 +45,8 @@ export const getCar = () => {
     });
 };
 
-export const postCar = (value: Item) => {
-  axios
+export const postCar = async (value: Item) => {
+  await axios
     .post(
       apiCars,
       {
